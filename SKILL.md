@@ -29,6 +29,9 @@ description: 萤火网格1.0（YingHuo Grid v1.0）——加密货币永续合�
 # 依赖
 pip install ccxt
 
+# 配置参数（复制示例配置，填入真实参数；付费订阅版提供回测调优参数）
+cp strategy_params.example.json strategy_params.json
+
 # 查看状态（自动从交易所同步持仓）
 python3 scripts/manual_grid_atr.py status
 

@@ -1,0 +1,11 @@
+# 真实策略参数（付费订阅版提供，不公开）
+strategy_params.json
+
+# 运行时生成文件
+.manual_grid_atr.json
+.manual_grid_journal.jsonl
+.manual_grid_alerts.log
+
+# Python
+__pycache__/
+*.pyc

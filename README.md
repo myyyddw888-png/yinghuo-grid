@@ -47,10 +47,13 @@
 # 依赖
 pip install ccxt
 
+# 配置参数（复制示例配置，填入你的参数；付费订阅版提供回测调优参数）
+cp strategy_params.example.json strategy_params.json
+
 # 查看状态（自动从交易所同步持仓）
 python3 scripts/manual_grid_atr.py status
 
-# 登记锚仓（固定 20U 马丁基准）
+# 登记锚仓
 python3 scripts/manual_grid_atr.py add BTC/USDT long 0.003 84277.5 fixed
 
 # 常驻自动扫描（每 60s）

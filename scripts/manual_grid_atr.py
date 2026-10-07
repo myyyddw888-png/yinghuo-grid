@@ -5,11 +5,10 @@
 针对「非策略币」手工锚仓，做动态 ATR 网格，全自动加仓/减仓/止盈止损：
 
 - 锚仓 = 用户手动开仓，系统只识别、永不自动动它
-- 网格间距 = 1 × ATR(4h, 14)（BTC 单独 0.5，可 per-coin atrmult 覆盖）
-- 马丁递增：前 3 格每层 ×1.5，第 4 格起每层 ×1.7（加速马丁）
-- 加仓上限：最多 5 格（第 6 格封顶，不再加）
+- 网格间距 = 基于 ATR 动态计算（可 per-coin 覆盖）
+- 马丁递增：递增加仓摊薄成本，封顶控敞口
 - 方向：多空镜像（做多做空同一套规则，反向）
-- 趋势过滤器：除 BTC/ETH 外，趋势不利时暂停加仓（EMA113 4h）
+- 趋势过滤器：单边行情方向不利时暂停加仓
 - 全自动执行：加仓/单格止盈/总止盈止损全部自动下单，无人工确认
 
 用法：
@@ -33,23 +32,42 @@ import ccxt
 
 # ===================== 规则参数 =====================
 VERSION = '萤火网格1.0'    # 策略命名（2026-10-07 正式上线）
-ATR_TIMEFRAME = '4h'        # ATR 时间框架
-ATR_PERIOD = 14             # ATR 周期
-ATR_MULT = 1.0              # 默认网格间距 = 1 × ATR（BTC 单独设 0.5）
-MIN_SPACING_PCT = 0.003     # 网格间距下限 = 价格的 0.3%（避免低波动频繁触发）
-FOLLOW_MULT = 1.0           # 防踏空：网格仓清空且价格偏离参考价 1×ATR 时，上移网格基准
-GLOBAL_ADD_STOP_PNL = -0.20  # 账户总仓位浮亏≥20%时暂停所有新加仓（账户级熔断）
-TREND_EMA_PERIOD = 113      # 趋势线 EMA 周期（4h 框架，≈18.9天，对齐回测 1h EMA453）
-FIRST_NOTIONAL = 20.0       # 马丁首笔基准名义(固定, 与锚仓实际大小解耦)
-MARTINGALE_TIER1 = 1.5      # 前 N 格马丁系数
-MARTINGALE_TIER2 = 1.7      # 第 N+1 格起马丁系数
-TIER1_LEVELS = 3            # 前 3 格用 1.5
-MAX_LEVELS = 5              # 最多加 5 格（第 6 格封顶）
-MIN_NOTIONAL = 5.0          # 最小下单名义（低于此跳过）
+
+# 核心策略参数从 strategy_params.json 加载（付费订阅版提供回测调优后的真实参数）。
+# 文件缺失时使用下方「演示参数」（能跑通但非实盘最优值）。
+def _load_params():
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'strategy_params.json')
+    if os.path.exists(p):
+        try:
+            with open(p) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    print("[GRID] ⚠️ 未找到 strategy_params.json，使用演示参数（非实盘调优值）")
+    return {}
+
+_PARAMS = _load_params()
+
+# 基础设施参数
+ATR_TIMEFRAME = _PARAMS.get('atr_timeframe', '4h')       # ATR 时间框架
+ATR_PERIOD = _PARAMS.get('atr_period', 14)               # ATR 周期
+MIN_SPACING_PCT = _PARAMS.get('min_spacing_pct', 0.003)  # 间距下限
+FOLLOW_MULT = _PARAMS.get('follow_mult', 1.0)            # 防踏空倍数
+MIN_NOTIONAL = _PARAMS.get('min_notional', 5.0)          # 最小下单名义
+
+# 核心策略参数（回测调优值，从 config 读取，fallback 为演示值）
+ATR_MULT = _PARAMS.get('atr_mult', 1.0)                  # 默认网格间距 = 1×ATR
+GLOBAL_ADD_STOP_PNL = _PARAMS.get('global_add_stop_pnl', -0.20)  # 账户级熔断
+TREND_EMA_PERIOD = _PARAMS.get('trend_ema_period', 200)  # 趋势线 EMA 周期（演示值）
+FIRST_NOTIONAL = _PARAMS.get('first_notional', 20.0)     # 马丁首笔基准名义
+MARTINGALE_TIER1 = _PARAMS.get('martingale_tier1', 1.2)  # 前 N 格马丁系数（演示值）
+MARTINGALE_TIER2 = _PARAMS.get('martingale_tier2', 1.4)  # 第 N+1 格起（演示值）
+TIER1_LEVELS = _PARAMS.get('tier1_levels', 3)            # 前 N 格用 tier1
+MAX_LEVELS = _PARAMS.get('max_levels', 3)                # 最多加仓格数（演示值）
 
 # ── 总止盈/止损档位 (盈亏阈值, 减仓比例=实际仓位百分比) ──
-TP_LEVELS = [(0.20, 0.50), (0.30, 1.00)]  # 止盈: 浮盈20%减50%仓, 浮盈30%减100%仓(全平)
-SL_LEVELS = [(0.15, 0.50), (0.25, 1.00)]  # 止损: 浮亏15%减50%仓, 浮亏25%减100%仓(全平)
+TP_LEVELS = [tuple(x) for x in _PARAMS.get('tp_levels', [(0.20, 0.50), (0.30, 1.00)])]
+SL_LEVELS = [tuple(x) for x in _PARAMS.get('sl_levels', [(0.10, 0.50), (0.20, 1.00)])]
 
 # ===================== 数据文件 =====================
 DIR = Path(os.path.dirname(os.path.abspath(__file__)))
